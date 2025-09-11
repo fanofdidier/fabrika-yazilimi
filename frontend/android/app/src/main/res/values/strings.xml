@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Fabrika Yazılımı</string>
+    <string name="title_activity_main">Fabrika Yazılımı</string>
+    <string name="package_name">com.fabrikayazilimi.app</string>
+    <string name="custom_url_scheme">com.fabrikayazilimi.app</string>
+</resources>
