@@ -1,7 +1,26 @@
 version: '3.8'
 
 services:
-  # Database
+  # MongoDB Database
+  mongodb:
+    image: mongo:6.0
+    container_name: fabrika_mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: fabrika_admin
+      MONGO_INITDB_ROOT_PASSWORD: Fabrika2024!Güvenli
+      MONGO_INITDB_DATABASE: fabrika
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongodb-keyfile:/etc/mongodb-keyfile:ro
+      - ./mongodb-encryption-key:/etc/mongodb-encryption/mongodb-keyfile:ro
+    ports:
+      - "127.0.0.1:27017:27017"
+    command: mongod --auth --keyFile /etc/mongodb-keyfile --enableEncryption --encryptionKeyFile /etc/mongodb-encryption/mongodb-keyfile
+    networks:
+      - fabrika_network
+    restart: unless-stopped
+
+  # PostgreSQL Database (backup)
   postgres:
     image: postgres:15-alpine
     container_name: fabrika_postgres
@@ -39,19 +58,15 @@ services:
     environment:
       NODE_ENV: production
       PORT: 5000
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: fabrika_db
-      DB_USER: fabrika_user
-      DB_PASSWORD: fabrika_password
+      MONGODB_URI: mongodb://fabrika_user:Fabrika2024!Güvenli@mongodb:27017/fabrika
       REDIS_URL: redis://redis:6379
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
       WHATSAPP_API_URL: https://api.whatsapp.com
       WHATSAPP_API_TOKEN: your-whatsapp-api-token
     ports:
-      - "5000:5000"
+      - "5001:5000"
     depends_on:
-      - postgres
+      - mongodb
       - redis
     volumes:
       - ./backend/uploads:/app/uploads
@@ -92,6 +107,8 @@ services:
       - production
 
 volumes:
+  mongodb_data:
+    driver: local
   postgres_data:
     driver: local
   redis_data:

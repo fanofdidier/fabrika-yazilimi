@@ -17,6 +17,7 @@ const Table = ({
   selectedRows = [],
   onRowSelect,
   onSelectAll,
+  getRowClassName,
   className = '',
   ...props
 }) => {
@@ -146,6 +147,8 @@ const Table = ({
           {sortedData.map((row, rowIndex) => {
             const isSelected = selectedRows.includes(row.id || rowIndex);
             
+            const rowClassName = getRowClassName ? getRowClassName(row, rowIndex) : '';
+            
             return (
               <tr
                 key={row.id || rowIndex}
@@ -155,7 +158,7 @@ const Table = ({
                   hoverable ? 'hover:bg-gray-50' : ''
                 } ${
                   isSelected ? 'bg-primary-50' : ''
-                } transition-colors duration-150`}
+                } ${rowClassName} transition-colors duration-150`}
               >
                 {selectable && (
                   <td className="relative w-12 px-6 sm:w-16 sm:px-8">

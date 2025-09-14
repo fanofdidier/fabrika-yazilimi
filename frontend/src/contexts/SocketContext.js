@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { io } from 'socket.io-client';
-import { autoDetectBackendUrl } from '../utils/networkUtils';
 
 // Create context
 const SocketContext = createContext();
@@ -18,13 +17,7 @@ export const SocketProvider = ({ children }) => {
     if (isAuthenticated && user) {
       console.log('Socket bağlantısı başlatılıyor...');
       
-      // Auto-detect socket URL
-      autoDetectBackendUrl().then(apiUrl => {
-        // Convert API URL to Socket URL
-        const socketUrl = apiUrl.replace('/api', '');
-        console.log('🔌 Socket URL:', socketUrl);
-        
-        const newSocket = io(socketUrl, {
+        const newSocket = io('http://91.98.135.16:5000', {
         auth: {
           token: localStorage.getItem('token')
         },
@@ -65,6 +58,39 @@ export const SocketProvider = ({ children }) => {
         console.log('New notification received:', notification);
       });
 
+      // Sipariş cevap sistemi için event listener
+      newSocket.on('orderResponse', (data) => {
+        console.log('Sipariş cevabı alındı:', data);
+        
+        // Custom event ile popup bildirim tetikle
+        window.dispatchEvent(new CustomEvent('orderResponseReceived', {
+          detail: {
+            type: 'order_response',
+            message: data.message || 'Siparişe yeni cevap geldi',
+            orderId: data.orderId,
+            timelineEntry: data.timelineEntry,
+            from: data.from
+          }
+        }));
+      });
+
+      // Sipariş güncellemesi için event listener
+      newSocket.on('orderUpdated', (data) => {
+        console.log('Sipariş güncellendi:', data);
+        
+        // Eğer sipariş durumu değiştiyse bildirim göster
+        if (data.statusChanged) {
+          window.dispatchEvent(new CustomEvent('orderResponseReceived', {
+            detail: {
+              type: 'order_status_change',
+              message: `Sipariş durumu güncellendi: ${data.newStatus}`,
+              orderId: data.orderId,
+              timelineEntry: data.timelineEntry
+            }
+          }));
+        }
+      });
+
       // Socket'i hemen set et ama connected durumunu connect event'inde set et
       setSocket(newSocket);
       
@@ -73,12 +99,11 @@ export const SocketProvider = ({ children }) => {
         console.log('Socket zaten bağlı, connected true yapılıyor');
         setConnected(true);
       }
-
-        return () => {
-          console.log('Socket cleanup...');
-          newSocket.close();
-        };
-      });
+      
+      return () => {
+        console.log('Socket cleanup...');
+        newSocket.close();
+      };
     } else {
       setConnected(false);
       setOnlineUsers([]);

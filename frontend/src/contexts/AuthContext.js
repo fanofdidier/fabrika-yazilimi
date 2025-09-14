@@ -142,6 +142,18 @@ export const AuthProvider = ({ children }) => {
       const response = await api.post('/auth/login', credentials);
       
       if (response.data.success) {
+        // 2FA kontrolü
+        if (response.data.requires2FA) {
+          dispatch({ type: AUTH_ACTIONS.LOGIN_FAILURE, payload: null });
+          return { 
+            success: true, 
+            requires2FA: true,
+            userId: response.data.userId,
+            user: response.data.user
+          };
+        }
+        
+        // Normal login
         const { token, user } = response.data.data;
         
         // Store token and set in API headers
@@ -161,6 +173,47 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Login error:', error);
       const errorMessage = error.response?.data?.message || 'Giriş yapılamadı';
+      
+      dispatch({ 
+        type: AUTH_ACTIONS.LOGIN_FAILURE, 
+        payload: errorMessage 
+      });
+      
+      toast.error(errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  // 2FA verification function
+  const verify2FA = async (userId, token) => {
+    dispatch({ type: AUTH_ACTIONS.LOGIN_START });
+    
+    try {
+      const response = await api.post('/auth/verify-2fa', {
+        userId: userId,
+        token: token
+      });
+      
+      if (response.data.success) {
+        const { token: jwtToken, user } = response.data.data;
+        
+        // Store token and set in API headers
+        localStorage.setItem('token', jwtToken);
+        setAuthToken(jwtToken);
+        
+        dispatch({ 
+          type: AUTH_ACTIONS.LOGIN_SUCCESS, 
+          payload: { user, token: jwtToken } 
+        });
+        
+        toast.success(`Hoş geldiniz, ${user.firstName || user.username}!`);
+        return { success: true };
+      } else {
+        throw new Error(response.data.message || '2FA doğrulaması başarısız');
+      }
+    } catch (error) {
+      console.error('2FA verification error:', error);
+      const errorMessage = error.response?.data?.message || '2FA doğrulaması başarısız';
       
       dispatch({ 
         type: AUTH_ACTIONS.LOGIN_FAILURE, 
@@ -297,6 +350,7 @@ export const AuthProvider = ({ children }) => {
     
     // Actions
     login,
+    verify2FA,
     logout,
     loadUser,
     updateProfile,

@@ -17,7 +17,7 @@ const VoicePlayer = ({ voiceRecording, userName, timestamp }) => {
 
   // Ses dosyası URL'si
   const audioUrl = voiceRecording && voiceRecording.filename ? 
-    `http://192.168.1.101:5001/uploads/voice-recordings/${voiceRecording.filename}` : 
+    `http://91.98.135.16:5000/uploads/voice-recordings/${voiceRecording.filename}` :
     null;
     
   console.log('🎤 Audio URL:', audioUrl);

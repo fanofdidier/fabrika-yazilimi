@@ -69,10 +69,8 @@ router.get('/', authenticateToken, validatePagination, async (req, res) => {
     
     // Rol bazlı filtreleme
     if (req.user.role === 'fabrika_iscisi') {
-      filter.$or = [
-        { assignedTo: req.user._id },
-        { assignedTo: null, location: 'fabrika' }
-      ];
+      // Fabrika işçisi tüm fabrika siparişlerini görebilir
+      filter.location = 'fabrika';
     } else if (req.user.role === 'magaza_personeli') {
       filter.$or = [
         { createdBy: req.user._id },
@@ -155,10 +153,8 @@ router.get('/stats', authenticateToken, async (req, res) => {
     
     // Rol bazlı filtreleme
     if (req.user.role === 'fabrika_iscisi') {
-      filter.$or = [
-        { assignedTo: req.user._id },
-        { assignedTo: null, location: 'fabrika' }
-      ];
+      // Fabrika işçisi tüm fabrika siparişlerini görebilir
+      filter.location = 'fabrika';
     } else if (req.user.role === 'magaza_personeli') {
       filter.$or = [
         { createdBy: req.user._id },
@@ -762,12 +758,23 @@ router.post('/:id/responses', authenticateToken, requireStoreOrAdmin, upload.sin
           });
       }
       
+      // Sipariş cevap sistemi için özel event
+      const orderResponseData = {
+        orderId: order._id.toString(),
+        message: notificationMessage,
+        timelineEntry: timelineEntry,
+        from: userName,
+        status: status,
+        note: note
+      };
+
       // Her room'a bildirim gönder
       targetRooms.forEach(room => {
         const roomSockets = io.sockets.adapter.rooms.get(room);
         console.log(`Room ${room} kullanıcı sayısı:`, roomSockets ? roomSockets.size : 0);
         io.to(room).emit('newNotification', notificationData);
         io.to(room).emit('orderUpdated', orderUpdateData);
+        io.to(room).emit('orderResponse', orderResponseData); // Yeni event
       });
 
       console.log('Socket.io bildirimleri gönderildi');

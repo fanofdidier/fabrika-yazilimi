@@ -282,29 +282,36 @@ const OrderDetailPage = () => {
     }
   };
 
-  const handleStatusUpdate = async (newStatus) => {
+  const handleCloseOrder = async () => {
     try {
-      await api.put(`/orders/${id}/status`, { status: newStatus });
+      // Siparişi kapatmak için 'tamamlandi' status'una çevir
+      await api.put(`/orders/${id}`, { status: 'tamamlandi' });
       await loadOrder();
+      
+      // Başarı mesajı
+      alert('Sipariş başarıyla kapatıldı!');
     } catch (error) {
-      console.error('Status update error:', error);
+      console.error('Order close error:', error);
       
       // API hatası durumunda local olarak güncelle
-      const updatedOrder = { ...order, status: newStatus };
+      const updatedOrder = { ...order, status: 'tamamlandi' };
       setOrder(updatedOrder);
       setEditForm(updatedOrder);
       
       // Add to timeline
       const newTimelineEntry = {
         id: order.timeline.length + 1,
-        status: newStatus,
-        title: `Durum ${newStatus} olarak güncellendi`,
-        description: `Sipariş durumu ${newStatus} olarak değiştirildi`,
+        status: 'tamamlandi',
+        title: 'Sipariş Kapatıldı',
+        description: 'Sipariş tamamlandı olarak işaretlendi',
         timestamp: new Date().toISOString(),
-        user: 'Mevcut Kullanıcı'
+        user: user?.username || 'Mevcut Kullanıcı'
       };
       updatedOrder.timeline.push(newTimelineEntry);
       setOrder(updatedOrder);
+      
+      // Hata mesajı
+      alert('Sipariş kapatılırken hata oluştu, ancak yerel olarak güncellendi.');
     }
   };
 
@@ -546,14 +553,31 @@ const OrderDetailPage = () => {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Durum İşlemleri</h3>
               <div className="space-y-3">
               {canEdit && (
-                  <Button 
-                  variant="danger"
-                    className="w-full" 
-                  onClick={() => handleStatusUpdate('cancelled')}
-                  >
-                    İptal Et
-                  </Button>
-                )}
+                <>
+                  {/* Kapalı siparişler için durum göster */}
+                  {order?.status && ['teslim_edildi', 'tamamlandi', 'iptal_edildi'].includes(order.status) ? (
+                    <div className="w-full p-4 bg-gray-100 rounded-lg text-center">
+                      <div className="flex items-center justify-center space-x-2">
+                        <span className="text-2xl">
+                          {order.status === 'iptal_edildi' ? '❌' : '✅'}
+                        </span>
+                        <span className="text-lg font-medium text-gray-700">
+                          {order.status === 'iptal_edildi' ? 'İptal Edildi' : 'Tamamlandı'}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Açık siparişler için kapat butonu */
+                    <Button 
+                      variant="secondary"
+                      className="w-full" 
+                      onClick={handleCloseOrder}
+                    >
+                      🔒 Siparişi Kapat
+                    </Button>
+                  )}
+                </>
+              )}
               </div>
             </Card>
 

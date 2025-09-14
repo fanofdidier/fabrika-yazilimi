@@ -7,7 +7,6 @@
     "@capacitor/android": "^6.0.0",
     "@capacitor/cli": "^6.0.0",
     "@capacitor/core": "^6.0.0",
-    "@capacitor/network": "^6.0.3",
     "@headlessui/react": "^1.7.13",
     "@heroicons/react": "^2.0.16",
     "@hookform/resolvers": "^2.9.11",

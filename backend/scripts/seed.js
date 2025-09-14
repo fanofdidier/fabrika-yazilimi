@@ -22,93 +22,32 @@ const connectDB = async () => {
 
 const seedUsers = async () => {
   try {
-    // Mevcut kullanıcıları temizle
-    await User.deleteMany({});
+    // Sadece admin kullanıcısı oluştur
+    const existingAdmin = await User.findOne({ role: 'admin' });
     
-    const users = [
-      {
+    if (!existingAdmin) {
+      const adminUser = {
         username: 'admin',
         email: 'admin@fabrika.com',
         password: 'admin123',
         firstName: 'Sistem',
         lastName: 'Yöneticisi',
         role: 'admin',
-        phone: '+90 555 000 0001',
-        whatsappNumber: '+90 555 000 0001',
+        phone: '',
+        whatsappNumber: '',
         isActive: true,
-        department: 'Yönetim'
-      },
-      {
-        username: 'magaza1',
-        email: 'magaza1@fabrika.com',
-        password: 'magaza123',
-        firstName: 'Ahmet',
-        lastName: 'Yılmaz',
-        role: 'magaza_personeli',
-        phone: '+90 555 000 0002',
-        whatsappNumber: '+90 555 000 0002',
-        isActive: true,
-        department: 'Mağaza'
-      },
-      {
-        username: 'magaza2',
-        email: 'magaza2@fabrika.com',
-        password: 'magaza123',
-        firstName: 'Fatma',
-        lastName: 'Demir',
-        role: 'magaza_personeli',
-        phone: '+90 555 000 0003',
-        whatsappNumber: '+90 555 000 0003',
-        isActive: true,
-        department: 'Mağaza'
-      },
-      {
-        username: 'fabrika1',
-        email: 'fabrika1@fabrika.com',
-        password: 'fabrika123',
-        firstName: 'Mehmet',
-        lastName: 'Kaya',
-        role: 'fabrika_iscisi',
-        phone: '+90 555 000 0004',
-        whatsappNumber: '+90 555 000 0004',
-        isActive: true,
-        department: 'Üretim'
-      },
-      {
-        username: 'fabrika2',
-        email: 'fabrika2@fabrika.com',
-        password: 'fabrika123',
-        firstName: 'Ayşe',
-        lastName: 'Özkan',
-        role: 'fabrika_iscisi',
-        phone: '+90 555 000 0005',
-        whatsappNumber: '+90 555 000 0005',
-        isActive: true,
-        department: 'Kalite Kontrol'
-      },
-      {
-        username: 'fabrika3',
-        email: 'fabrika3@fabrika.com',
-        password: 'fabrika123',
-        firstName: 'Ali',
-        lastName: 'Çelik',
-        role: 'fabrika_iscisi',
-        phone: '+90 555 000 0006',
-        whatsappNumber: '+90 555 000 0006',
-        isActive: true,
-        department: 'Paketleme'
-      }
-    ];
+        department: 'Genel',
+        position: 'Yönetici'
+      };
 
-    // Kullanıcıları tek tek oluştur (şifre hash'leme için)
-    const createdUsers = [];
-    for (const userData of users) {
-      const user = new User(userData);
-      await user.save(); // Bu şifreyi hash'leyecek
-      createdUsers.push(user);
+      const admin = new User(adminUser);
+      await admin.save();
+      console.log('Admin kullanıcısı oluşturuldu');
+      return [admin];
+    } else {
+      console.log('Admin kullanıcısı zaten mevcut');
+      return [existingAdmin];
     }
-    console.log(`${createdUsers.length} kullanıcı oluşturuldu`);
-    return createdUsers;
   } catch (error) {
     console.error('Kullanıcı seed hatası:', error);
     throw error;
@@ -121,9 +60,12 @@ const seedOrders = async (users) => {
     await Order.deleteMany({});
     
     const admin = users.find(u => u.role === 'admin');
-    const magaza1 = users.find(u => u.username === 'magaza1');
-    const magaza2 = users.find(u => u.username === 'magaza2');
-    const fabrika1 = users.find(u => u.username === 'fabrika1');
+    
+    // Eğer sadece admin varsa, sipariş oluşturma
+    if (!admin) {
+      console.log('Admin kullanıcısı bulunamadı, sipariş oluşturulmuyor');
+      return [];
+    }
     
     const orders = [
       {
@@ -146,9 +88,9 @@ const seedOrders = async (users) => {
         ],
         priority: 'yüksek',
         dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // 15 gün sonra
-        status: 'beklemede',
-        createdBy: magaza1._id,
-        assignedTo: fabrika1._id,
+        status: 'siparis_olusturuldu',
+        createdBy: admin._id,
+        assignedTo: admin._id,
         location: 'fabrika',
         estimatedCost: 25000,
         materialStatus: {
@@ -171,9 +113,9 @@ const seedOrders = async (users) => {
         ],
         priority: 'acil',
         dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 gün sonra
-        status: 'uretimde',
-        createdBy: magaza2._id,
-        assignedTo: fabrika1._id,
+        status: 'uretim_basladi',
+        createdBy: admin._id,
+        assignedTo: admin._id,
         location: 'fabrika',
         estimatedCost: 1500,
         isUrgent: true
@@ -198,7 +140,7 @@ const seedOrders = async (users) => {
         ],
         priority: 'normal',
         dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 gün sonra
-        status: 'beklemede',
+        status: 'siparis_olusturuldu',
         createdBy: admin._id,
         location: 'fabrika',
         estimatedCost: 15000
@@ -220,9 +162,13 @@ const seedTasks = async (users, orders) => {
     await Task.deleteMany({});
     
     const admin = users.find(u => u.role === 'admin');
-    const fabrika1 = users.find(u => u.username === 'fabrika1');
-    const fabrika2 = users.find(u => u.username === 'fabrika2');
-    const fabrika3 = users.find(u => u.username === 'fabrika3');
+    
+    // Eğer sadece admin varsa, görev oluşturma
+    if (!admin) {
+      console.log('Admin kullanıcısı bulunamadı, görev oluşturulmuyor');
+      return [];
+    }
+    
     const order1 = orders[0];
     const order2 = orders[1];
     
@@ -235,7 +181,7 @@ const seedTasks = async (users, orders) => {
         dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
         status: 'beklemede',
         createdBy: admin._id,
-        assignedTo: fabrika2._id,
+        assignedTo: admin._id,
         relatedOrder: order1._id,
         location: 'fabrika',
         estimatedDuration: 4, // saat
@@ -265,7 +211,7 @@ const seedTasks = async (users, orders) => {
         dueDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
         status: 'devam_ediyor',
         createdBy: admin._id,
-        assignedTo: fabrika1._id,
+        assignedTo: admin._id,
         relatedOrder: order2._id,
         location: 'fabrika',
         estimatedDuration: 6,
@@ -276,7 +222,7 @@ const seedTasks = async (users, orders) => {
             description: 'Tamir edilecek ürünleri kategorize et',
             order: 1,
             isCompleted: true,
-            completedBy: fabrika1._id,
+            completedBy: admin._id,
             completedAt: new Date(Date.now() - 2 * 60 * 60 * 1000)
           },
           {
@@ -284,7 +230,7 @@ const seedTasks = async (users, orders) => {
             description: 'Bozuk fermuarları değiştir',
             order: 2,
             isCompleted: true,
-            completedBy: fabrika1._id,
+            completedBy: admin._id,
             completedAt: new Date(Date.now() - 1 * 60 * 60 * 1000)
           },
           {
@@ -302,7 +248,7 @@ const seedTasks = async (users, orders) => {
         dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         status: 'beklemede',
         createdBy: admin._id,
-        assignedTo: fabrika3._id,
+        assignedTo: admin._id,
         location: 'fabrika',
         estimatedDuration: 8,
         steps: [
@@ -352,8 +298,13 @@ const seedNotifications = async (users, orders, tasks) => {
     await Notification.deleteMany({});
     
     const admin = users.find(u => u.role === 'admin');
-    const magaza1 = users.find(u => u.username === 'magaza1');
-    const fabrika1 = users.find(u => u.username === 'fabrika1');
+    
+    // Eğer sadece admin varsa, bildirim oluşturma
+    if (!admin) {
+      console.log('Admin kullanıcısı bulunamadı, bildirim oluşturulmuyor');
+      return [];
+    }
+    
     const order1 = orders[0];
     const task1 = tasks[0];
     
@@ -374,11 +325,11 @@ const seedNotifications = async (users, orders, tasks) => {
         message: `"${order1.title}" siparişi size atandı. Lütfen detayları inceleyin.`,
         type: 'siparis_olusturuldu',
         priority: 'yüksek',
-        sender: magaza1._id,
+        sender: admin._id,
         relatedOrder: order1._id,
         recipients: [
           {
-            user: fabrika1._id,
+            user: admin._id,
             isRead: false,
             readAt: null,
             deliveryStatus: 'delivered'
@@ -396,7 +347,7 @@ const seedNotifications = async (users, orders, tasks) => {
         relatedTask: task1._id,
         recipients: [
           {
-            user: fabrika1._id,
+            user: admin._id,
             isRead: false,
             readAt: null,
             deliveryStatus: 'delivered'

@@ -5,6 +5,11 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
+// Data Protection Middleware
+const { encryptIncomingData, decryptOutgoingData } = require('./middleware/encryption');
+const { protectPII } = require('./middleware/piiProtection');
+const { dataMaskingMiddleware } = require('./middleware/dataMasking');
+
 const app = express();
 const http = require('http');
 const server = http.createServer(app);
@@ -33,6 +38,10 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Data Protection Middleware
+app.use(protectPII(['email', 'phone', 'firstName', 'lastName'], 'mask'));
+app.use(dataMaskingMiddleware({ preserveIds: true, preserveDates: true }));
 
 // Ses dosyalarını serve et - CORS header'ları ile
 app.use('/uploads/voice-recordings', (req, res, next) => {
@@ -116,6 +125,8 @@ app.use('/api/orders', require('./routes/orders'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/products', require('./routes/products'));
+// app.use('/api/password-reset', require('./routes/passwordReset'));
+app.use('/api/2fa', require('./routes/twoFactorAuth'));
 
 // Ana route
 app.get('/', (req, res) => {

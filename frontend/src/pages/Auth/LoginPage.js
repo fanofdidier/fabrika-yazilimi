@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Card, Button, Input, Alert } from '../../components/UI';
 import { useAuth } from '../../contexts/AuthContext';
+import TwoFactorVerification from '../../components/Auth/TwoFactorVerification';
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -12,6 +13,9 @@ const LoginPage = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [loginStep, setLoginStep] = useState(1); // 1: Normal login, 2: 2FA
+  const [userId, setUserId] = useState(null);
+  const [userInfo, setUserInfo] = useState(null);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -39,8 +43,15 @@ const LoginPage = () => {
       });
       
       if (result.success) {
-        // Redirect to dashboard
-        navigate('/dashboard');
+        if (result.requires2FA) {
+          // 2FA gerekli
+          setUserId(result.userId);
+          setUserInfo(result.user);
+          setLoginStep(2);
+        } else {
+          // Normal login tamamlandı
+          navigate('/dashboard');
+        }
       } else {
         throw new Error(result.error || 'Giriş yapılamadı');
       }
@@ -50,6 +61,41 @@ const LoginPage = () => {
       setLoading(false);
     }
   };
+
+  const handle2FASuccess = () => {
+    navigate('/dashboard');
+  };
+
+  const handle2FACancel = () => {
+    setLoginStep(1);
+    setUserId(null);
+    setUserInfo(null);
+    setError('');
+  };
+
+  // 2FA doğrulama adımı
+  if (loginStep === 2) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="text-center">
+            <h1 className="text-4xl font-bold text-blue-600 mb-2">FabrikaYazılımı</h1>
+            <p className="text-sm text-gray-600">
+              Hoş geldiniz, {userInfo?.firstName} {userInfo?.lastName}
+            </p>
+          </div>
+        </div>
+        
+        <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+          <TwoFactorVerification 
+            userId={userId}
+            onSuccess={handle2FASuccess}
+            onCancel={handle2FACancel}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">

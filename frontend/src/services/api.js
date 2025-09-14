@@ -1,29 +1,13 @@
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
-import { autoDetectBackendUrl } from '../utils/networkUtils';
 
-// Dynamic API URL detection
-let apiBaseURL = null;
-
-const initializeApi = async () => {
-  if (!apiBaseURL) {
-    apiBaseURL = await autoDetectBackendUrl();
-  }
-  return apiBaseURL;
-};
-
-// Create axios instance with dynamic URL
+// Create axios instance
 const api = axios.create({
+baseURL: process.env.REACT_APP_API_URL || 'http://91.98.135.16:5001/api',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
-});
-
-// Set base URL dynamically
-initializeApi().then(url => {
-  api.defaults.baseURL = url;
-  console.log('🔗 API Base URL set to:', url);
 });
 
 // Request interceptor

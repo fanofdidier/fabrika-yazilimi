@@ -3,57 +3,134 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { LoadingSpinner } from '../components/UI/LoadingSpinner';
+import LoadingSpinner from '../components/UI/LoadingSpinner';
 import { Card, Button, Badge, Alert } from '../components/UI';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
+import { 
+  countOrderStatuses, 
+  countTaskStatuses, 
+  getOrderStatusLabel, 
+  getTaskStatusLabel,
+  getOrderStatusColor,
+  getTaskStatusColor,
+  mapOrderStatus,
+  mapTaskStatus
+} from '../utils/statusMapping';
 
 const Dashboard = () => {
   const { user, hasRole } = useAuth();
-  const { isConnected, getOnlineUsersCount } = useSocket();
-  const { unreadCount } = useNotification();
+  const { socket, isConnected, getOnlineUsersCount } = useSocket();
+  const { unreadCount, fetchNotifications } = useNotification();
   
   const [stats, setStats] = useState({
-    orders: { total: 0, pending: 0, inProgress: 0, completed: 0 },
-    tasks: { total: 0, pending: 0, inProgress: 0, completed: 0 },
-    users: { total: 0, online: 0 },
+    orders: { total: 0, open: 0, closed: 0 },
     notifications: { unread: 0 }
   });
   const [recentOrders, setRecentOrders] = useState([]);
-  const [recentTasks, setRecentTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    console.log('🎯 Rendering Dashboard v2 (real data)');
     fetchDashboardData();
   }, []);
+
+  // Socket.io ile gerçek zamanlı güncellemeler
+  useEffect(() => {
+    if (socket) {
+      const handleOrderUpdated = (data) => {
+        console.log('🔔 Dashboard: Order updated event received:', data);
+        // Dashboard verilerini yenile
+        fetchDashboardData();
+      };
+
+      const handleTaskUpdated = (data) => {
+        console.log('🔔 Dashboard: Task updated event received:', data);
+        // Dashboard verilerini yenile
+        fetchDashboardData();
+      };
+
+      const handleNewNotification = (notification) => {
+        console.log('🔔 Dashboard: New notification received:', notification);
+        // Bildirim sayısını güncelle
+        fetchNotifications();
+      };
+
+      socket.on('orderUpdated', handleOrderUpdated);
+      socket.on('taskUpdated', handleTaskUpdated);
+      socket.on('newNotification', handleNewNotification);
+
+      return () => {
+        socket.off('orderUpdated', handleOrderUpdated);
+        socket.off('taskUpdated', handleTaskUpdated);
+        socket.off('newNotification', handleNewNotification);
+      };
+    }
+  }, [socket]);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Fetch dashboard statistics
-      const [statsResponse, ordersResponse, tasksResponse] = await Promise.all([
-        api.get('/dashboard/stats'),
-        api.get('/orders?limit=5&sort=-createdAt'),
-        api.get('/tasks?limit=5&sort=-createdAt')
+
+      // Use existing backend endpoints
+      const [ordersStatsRes, ordersRes] = await Promise.all([
+        api.get('/orders/stats'),
+        api.get('/orders?limit=5')
       ]);
-      
-      setStats({
-        ...statsResponse.data,
-        users: {
-          ...statsResponse.data.users,
-          online: getOnlineUsersCount()
-        },
-        notifications: {
-          unread: unreadCount
+
+      const ordersStats = ordersStatsRes.data?.data || {};
+
+      // Backend'den gelen statusStats array'ini object'e çevir
+      const orderStatusCounts = Object.fromEntries(
+        (ordersStats.statusStats || []).map(s => [s._id, s.count])
+      );
+
+      // Basit kategoriler: Toplam, Açık, Kapalı
+      const orderCounts = { 
+        total: 0,
+        open: 0,      // siparis_olusturuldu, siparis_onaylandi, hammadde_hazirlaniyor, uretim_basladi, uretim_tamamlandi, kalite_kontrol, sevkiyata_hazir, yola_cikti
+        closed: 0     // teslim_edildi, tamamlandi, iptal_edildi
+      };
+
+      // Orders status mapping - basit kategoriler
+      Object.entries(orderStatusCounts).forEach(([backendStatus, count]) => {
+        orderCounts.total += count;
+        
+        switch (backendStatus) {
+          case 'siparis_olusturuldu':
+          case 'siparis_onaylandi':
+          case 'hammadde_hazirlaniyor':
+          case 'uretim_basladi':
+          case 'uretim_tamamlandi':
+          case 'kalite_kontrol':
+          case 'sevkiyata_hazir':
+          case 'yola_cikti':
+            orderCounts.open += count;
+            break;
+          case 'teslim_edildi':
+          case 'tamamlandi':
+          case 'iptal_edildi':
+            orderCounts.closed += count;
+            break;
         }
       });
-      
-      setRecentOrders(ordersResponse.data.orders || []);
-      setRecentTasks(tasksResponse.data.tasks || []);
-      
+
+      const derived = {
+        orders: {
+          total: orderCounts.total,
+          open: orderCounts.open,      // Aktif siparişler
+          closed: orderCounts.closed   // Kapalı siparişler
+        },
+        notifications: { unread: unreadCount }
+      };
+
+      setStats(derived);
+
+      // Recent data - backend'den gelen recentOrders kullan
+      setRecentOrders(ordersStats.recentOrders || []);
+
     } catch (error) {
       console.error('Dashboard data fetch error:', error);
       setError('Dashboard verileri yüklenirken hata oluştu');
@@ -63,43 +140,26 @@ const Dashboard = () => {
     }
   };
 
-  const getOrderStatusColor = (status) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'in_progress': return 'bg-blue-100 text-blue-800';
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
+  const getOrderStatusColorClass = (status) => {
+    const color = getOrderStatusColor(status);
+    switch (color) {
+      case 'warning': return 'bg-yellow-100 text-yellow-800';
+      case 'primary': return 'bg-blue-100 text-blue-800';
+      case 'success': return 'bg-green-100 text-green-800';
+      case 'danger': return 'bg-red-100 text-red-800';
+      case 'info': return 'bg-blue-100 text-blue-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const getTaskStatusColor = (status) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'in_progress': return 'bg-blue-100 text-blue-800';
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
+  const getTaskStatusColorClass = (status) => {
+    const color = getTaskStatusColor(status);
+    switch (color) {
+      case 'warning': return 'bg-yellow-100 text-yellow-800';
+      case 'primary': return 'bg-blue-100 text-blue-800';
+      case 'success': return 'bg-green-100 text-green-800';
+      case 'danger': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getOrderStatusText = (status) => {
-    switch (status) {
-      case 'pending': return 'Bekliyor';
-      case 'in_progress': return 'Devam Ediyor';
-      case 'completed': return 'Tamamlandı';
-      case 'cancelled': return 'İptal Edildi';
-      default: return status;
-    }
-  };
-
-  const getTaskStatusText = (status) => {
-    switch (status) {
-      case 'pending': return 'Bekliyor';
-      case 'in_progress': return 'Devam Ediyor';
-      case 'completed': return 'Tamamlandı';
-      case 'cancelled': return 'İptal Edildi';
-      default: return status;
     }
   };
 
@@ -177,7 +237,7 @@ const Dashboard = () => {
       </Card>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-6">
         {/* Orders Stats */}
         <Card className="hover-lift shadow-soft">
           <Card.Body>
@@ -200,92 +260,17 @@ const Dashboard = () => {
             </div>
             <div className="mt-4 space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Bekliyor</span>
-                <Badge variant="warning" size="sm">{stats.orders.pending}</Badge>
+                <span className="text-sm text-gray-600">Açık Siparişler</span>
+                <Badge variant="primary" size="sm">{stats.orders.open}</Badge>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Devam Ediyor</span>
-                <Badge variant="primary" size="sm">{stats.orders.inProgress}</Badge>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Tamamlandı</span>
-                <Badge variant="success" size="sm">{stats.orders.completed}</Badge>
+                <span className="text-sm text-gray-600">Kapalı Siparişler</span>
+                <Badge variant="secondary" size="sm">{stats.orders.closed}</Badge>
               </div>
             </div>
           </Card.Body>
         </Card>
 
-        {/* Tasks Stats */}
-        <Card className="hover-lift shadow-soft">
-          <Card.Body>
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center shadow-medium">
-                  <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 8l2 2 4-4" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-4 flex-1">
-                <p className="text-sm font-medium text-gray-500">
-                  Toplam Görevler
-                </p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.tasks.total}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Bekliyor</span>
-                <Badge variant="warning" size="sm">{stats.tasks.pending}</Badge>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Devam Ediyor</span>
-                <Badge variant="primary" size="sm">{stats.tasks.inProgress}</Badge>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Tamamlandı</span>
-                <Badge variant="success" size="sm">{stats.tasks.completed}</Badge>
-              </div>
-            </div>
-          </Card.Body>
-        </Card>
-
-        {/* Users Stats */}
-        {hasRole(['admin', 'magaza_personeli']) && (
-          <Card className="hover-lift shadow-soft">
-            <Card.Body>
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center shadow-medium">
-                    <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="ml-4 flex-1">
-                  <p className="text-sm font-medium text-gray-500">
-                    Kullanıcılar
-                  </p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {stats.users.total}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Çevrimiçi</span>
-                  <Badge variant="success" size="sm">{stats.users.online}</Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Çevrimdışı</span>
-                  <Badge variant="secondary" size="sm">{stats.users.total - stats.users.online}</Badge>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        )}
 
         {/* Notifications Stats */}
         <Card className="hover-lift shadow-soft">
@@ -354,7 +339,7 @@ const Dashboard = () => {
                             variant={getOrderStatusColor(order.status)}
                             size="sm"
                           >
-                            {getOrderStatusText(order.status)}
+                            {getOrderStatusLabel(order.status)}
                           </Badge>
                         </div>
                         <p className="text-sm text-gray-500 mt-1">
@@ -381,65 +366,6 @@ const Dashboard = () => {
           </Card.Body>
         </Card>
 
-        {/* Recent Tasks */}
-        <Card className="shadow-soft">
-          <Card.Header>
-            <div className="flex items-center justify-between">
-              <Card.Title>Son Görevler</Card.Title>
-              <Button
-                as={Link}
-                to="/tasks"
-                variant="ghost"
-                size="sm"
-              >
-                Tümünü Görüntüle →
-              </Button>
-            </div>
-          </Card.Header>
-          <Card.Body className="p-0">
-            <div className="divide-y divide-gray-200">
-              {recentTasks.length > 0 ? (
-                recentTasks.map((task) => (
-                  <div key={task.id} className="px-6 py-4 hover:bg-gray-50">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2">
-                          <p className="text-sm font-medium text-gray-900">
-                            {task.title}
-                          </p>
-                          <Badge
-                            variant={getTaskStatusColor(task.status)}
-                            size="sm"
-                          >
-                            {getTaskStatusText(task.status)}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-gray-500 mt-1">
-                          {task.assignedTo?.name} • {formatDate(task.createdAt)}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <Badge
-                          variant={task.priority === 'high' ? 'danger' : task.priority === 'medium' ? 'warning' : 'success'}
-                          size="sm"
-                        >
-                          {task.priority === 'high' ? 'Yüksek' : task.priority === 'medium' ? 'Orta' : 'Düşük'}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="px-6 py-8 text-center text-gray-500">
-                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 8l2 2 4-4" />
-                  </svg>
-                  <p className="mt-2 text-sm">Henüz görev yok</p>
-                </div>
-              )}
-            </div>
-          </Card.Body>
-        </Card>
       </div>
 
       {/* Quick Actions */}

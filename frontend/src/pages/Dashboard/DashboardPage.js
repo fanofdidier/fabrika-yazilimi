@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Button, Badge, LoadingSpinner } from '../../components/UI';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import api from '../../services/api';
 
 const DashboardPage = () => {
   const { user } = useAuth();
@@ -15,27 +16,48 @@ const DashboardPage = () => {
     completedOrders: 0
   });
 
-  useEffect(() => {
-    // Simulate loading dashboard data
-    const loadDashboardData = async () => {
-      setLoading(true);
-      try {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setStats({
-          totalOrders: 156,
-          pendingTasks: 23,
-          activeUsers: 45,
-          completedOrders: 134
-        });
-      } catch (error) {
-        console.error('Dashboard data loading error:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const loadDashboardData = useCallback(async () => {
+    console.log('🎯 Rendering Dashboard (legacy view) with real data');
+    setLoading(true);
+    try {
+      const [ordersStatsRes, tasksStatsRes, ordersRes, tasksRes] = await Promise.all([
+        api.get('/orders/stats'),
+        api.get('/tasks/stats'),
+        api.get('/orders?limit=5'),
+        api.get('/tasks?limit=5')
+      ]);
 
-    loadDashboardData();
+      const ordersStats = ordersStatsRes.data?.data || {};
+      const tasksStats = tasksStatsRes.data?.data || {};
+      console.log('📊 ordersStats:', ordersStats);
+      console.log('📊 tasksStats:', tasksStats);
+
+      const orderStatusCounts = Object.fromEntries(
+        (ordersStats.statusStats || []).map(s => [s._id, s.count])
+      );
+      const taskStatusCounts = Object.fromEntries(
+        (tasksStats.statusStats || []).map(s => [s._id, s.count])
+      );
+
+      setStats({
+        totalOrders: ordersStats.totalOrders || 0,
+        pendingTasks: (taskStatusCounts['beklemede'] || taskStatusCounts['pending'] || 0),
+        activeUsers: 0,
+        completedOrders: (orderStatusCounts['teslim_edildi'] || orderStatusCounts['completed'] || 0)
+      });
+      // recent data (not shown in this simple view, but good to keep warm)
+      console.log('🧾 recentOrders len:', (ordersRes.data?.data?.orders || []).length);
+      console.log('🧾 recentTasks len:', (tasksRes.data?.data?.tasks || []).length);
+    } catch (error) {
+      console.error('Dashboard data loading error:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   const unreadNotifications = (notifications || []).filter(n => !n.read).length;
 

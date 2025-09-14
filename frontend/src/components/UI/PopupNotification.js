@@ -145,51 +145,69 @@ const PopupNotification = ({ notification, onClose }) => {
       <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 ${
         isClosing ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
       }`}>
-        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden max-w-2xl w-full mx-4 transform hover:scale-105 transition-transform duration-200">
+        <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden max-w-2xl w-full mx-4 transform hover:scale-105 transition-all duration-300 hover:shadow-3xl">
           {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-6 flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <BellIcon className="w-8 h-8 text-white" />
-              <h3 className="text-white font-bold text-xl">{getTitle()}</h3>
+          <div className="bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 px-8 py-6 flex items-center justify-between relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-indigo-500/20"></div>
+            <div className="flex items-center space-x-4 relative z-10">
+              <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                <BellIcon className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-xl">{getTitle()}</h3>
+                <p className="text-blue-100 text-sm">Yeni bildirim</p>
+              </div>
             </div>
             <button
               onClick={handleClose}
-              className="text-white hover:text-gray-200 transition-colors p-2 rounded-full hover:bg-white hover:bg-opacity-20"
+              className="text-white hover:text-gray-200 transition-all duration-200 p-3 rounded-full hover:bg-white/20 backdrop-blur-sm relative z-10"
             >
               <XIcon className="w-6 h-6" />
             </button>
           </div>
 
           {/* Content */}
-          <div className="p-8">
+          <div className="p-8 bg-gradient-to-br from-gray-50 to-white">
             <div className="flex items-start space-x-6">
-              {notification.timelineEntry && getStatusIcon(notification.timelineEntry.status)}
-              {!notification.timelineEntry && <MessageSquareIcon className="w-10 h-10 text-gray-500" />}
+              <div className="flex-shrink-0">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl flex items-center justify-center shadow-lg">
+                  {notification.timelineEntry && getStatusIcon(notification.timelineEntry.status)}
+                  {!notification.timelineEntry && <MessageSquareIcon className="w-8 h-8 text-blue-600" />}
+                </div>
+              </div>
               <div className="flex-1">
-                <p className="text-lg font-semibold text-gray-800 leading-relaxed mb-4">{notification.message}</p>
-                {notification.orderId && (
-                  <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                    <p className="text-sm text-gray-600 font-medium">Sipariş ID: {notification.orderId.substring(0, 8)}...</p>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-500 font-medium">
-                    {notification.timestamp ? new Date(notification.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}
-                  </p>
-                  <div className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
-                    Manuel kapatma gerekli
+                <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+                  <p className="text-lg font-semibold text-gray-800 leading-relaxed mb-4">{notification.message}</p>
+                  {notification.orderId && (
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 mb-4 border border-blue-100">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <p className="text-sm text-blue-700 font-medium">Sipariş ID: {notification.orderId.substring(0, 8)}...</p>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <p className="text-sm text-gray-600 font-medium">
+                        {notification.timestamp ? new Date(notification.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </p>
+                    </div>
+                    <div className="text-xs text-blue-600 bg-blue-50 px-3 py-1 rounded-full font-medium">
+                      Manuel kapatma
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Footer - Progress bar kaldırıldı, otomatik kapanma yok */}
-          <div className="bg-gray-50 px-8 py-4 border-t border-gray-200">
+          {/* Footer */}
+          <div className="bg-gradient-to-r from-gray-50 to-blue-50 px-8 py-4 border-t border-gray-100">
             <div className="flex items-center justify-center">
-              <div className="flex items-center space-x-2 text-sm text-gray-500">
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                <span>Bildirim aktif - Manuel kapatma gerekli</span>
+              <div className="flex items-center space-x-3 text-sm text-gray-600">
+                <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse shadow-lg"></div>
+                <span className="font-medium">Bildirim aktif - Manuel kapatma gerekli</span>
               </div>
             </div>
           </div>

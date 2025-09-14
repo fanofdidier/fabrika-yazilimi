@@ -66,6 +66,101 @@ router.get('/', authenticateToken, requireAdmin, validatePagination, async (req,
   }
 });
 
+// @route   POST /api/users
+// @desc    Yeni kullanıcı oluştur
+// @access  Private (Admin or Store Staff)
+router.post('/', authenticateToken, async (req, res) => {
+  try {
+    // Check if user has permission to create users
+    if (!['admin', 'magaza_personeli'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bu işlem için yetkiniz yok'
+      });
+    }
+
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      role,
+      isActive = true
+    } = req.body;
+
+    // Validation
+    if (!firstName || !lastName || !email || !password || !role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ad, soyad, e-posta, şifre ve rol gereklidir'
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Şifre en az 6 karakter olmalıdır'
+      });
+    }
+
+    // Check if email already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Bu e-posta adresi zaten kullanılıyor'
+      });
+    }
+
+    // Create username from first and last name
+    const username = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`.replace(/\s+/g, '');
+    
+    // Check if username already exists
+    let finalUsername = username;
+    let counter = 1;
+    while (await User.findOne({ username: finalUsername })) {
+      finalUsername = `${username}${counter}`;
+      counter++;
+    }
+
+    // Create user
+    const userData = {
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email.toLowerCase().trim(),
+      username: finalUsername,
+      password,
+      role,
+      department: 'Genel',
+      position: 'Çalışan',
+      phone: '',
+      address: '',
+      isActive: isActive !== false
+    };
+
+    const user = new User(userData);
+    await user.save();
+
+    // Return user without password
+    const userResponse = await User.findById(user._id).select('-password');
+
+    res.status(201).json({
+      success: true,
+      message: 'Kullanıcı başarıyla oluşturuldu',
+      data: {
+        user: userResponse
+      }
+    });
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Sunucu hatası',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
 // @route   GET /api/users/stats
 // @desc    Kullanıcı istatistikleri
 // @access  Private (Admin)
@@ -343,6 +438,44 @@ router.get('/role/:role', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Get users by role error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Sunucu hatası',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// @route   DELETE /api/users/:id
+// @desc    Kullanıcıyı sil
+// @access  Private (Admin only)
+router.delete('/:id', authenticateToken, requireAdmin, validateObjectId(), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Kullanıcı bulunamadı'
+      });
+    }
+
+    // Admin kullanıcısını silmeyi engelle
+    if (user.role === 'admin') {
+      return res.status(400).json({
+        success: false,
+        message: 'Admin kullanıcısı silinemez'
+      });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+    
+    res.json({
+      success: true,
+      message: 'Kullanıcı başarıyla silindi'
+    });
+  } catch (error) {
+    console.error('Delete user error:', error);
     res.status(500).json({
       success: false,
       message: 'Sunucu hatası',

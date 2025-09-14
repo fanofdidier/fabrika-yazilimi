@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Button, Badge, Alert, LoadingSpinner, Input } from '../../components/UI';
+import api from '../../services/api';
 
 
 const UserDetailPage = () => {
@@ -12,79 +13,34 @@ const UserDetailPage = () => {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [formData, setFormData] = useState({});
 
-  // Mock user data
-  const mockUsers = {
-    1: {
-      id: 1,
-      firstName: 'Ahmet',
-      lastName: 'Yılmaz',
-      email: 'ahmet.yilmaz@fabrika.com',
-      phone: '+90 532 123 4567',
-      role: 'admin',
-      department: 'Yönetim',
-      position: 'Fabrika Müdürü',
-      status: 'active',
-      lastLogin: '2024-01-15T10:30:00Z',
-      createdAt: '2023-06-01T09:00:00Z',
-      address: 'İstanbul, Türkiye',
-      emergencyContact: '+90 532 987 6543',
-      startDate: '2023-06-01',
-      salary: '15000',
-      notes: 'Fabrika müdürü olarak tüm operasyonlardan sorumlu.'
-    },
-    2: {
-      id: 2,
-      firstName: 'Fatma',
-      lastName: 'Demir',
-      email: 'fatma.demir@fabrika.com',
-      phone: '+90 533 234 5678',
-      role: 'manager',
-      department: 'Üretim',
-      position: 'Üretim Müdürü',
-      status: 'active',
-      lastLogin: '2024-01-15T08:45:00Z',
-      createdAt: '2023-07-15T10:00:00Z',
-      address: 'Ankara, Türkiye',
-      emergencyContact: '+90 533 876 5432',
-      startDate: '2023-07-15',
-      salary: '12000',
-      notes: 'Üretim süreçlerinin yönetiminden sorumlu.'
-    },
-    3: {
-      id: 3,
-      firstName: 'Mehmet',
-      lastName: 'Kaya',
-      email: 'mehmet.kaya@fabrika.com',
-      phone: '+90 534 345 6789',
-      role: 'employee',
-      department: 'Üretim',
-      position: 'Operatör',
-      status: 'active',
-      lastLogin: '2024-01-14T16:20:00Z',
-      createdAt: '2023-08-01T11:00:00Z',
-      address: 'İzmir, Türkiye',
-      emergencyContact: '+90 534 765 4321',
-      startDate: '2023-08-01',
-      salary: '8000',
-      notes: 'Deneyimli makine operatörü.'
-    }
-  };
 
   useEffect(() => {
     const fetchUser = async () => {
+      if (!id) return;
+      
       setLoading(true);
       try {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        const response = await api.get(`/users/${id}`);
         
-        const userData = mockUsers[id];
-        if (userData) {
+        if (response.data?.success && response.data?.data?.user) {
+          const userData = response.data.data.user;
           setUser(userData);
-          setFormData(userData);
+          setFormData({
+            firstName: userData.firstName || '',
+            lastName: userData.lastName || '',
+            email: userData.email || '',
+            username: userData.username || '',
+            role: userData.role || 'fabrika_iscisi',
+            department: userData.department || 'Genel',
+            position: userData.position || 'Çalışan',
+            phone: userData.phone || '',
+            isActive: userData.isActive !== false
+          });
         } else {
           setMessage({ type: 'error', text: 'Kullanıcı bulunamadı.' });
         }
       } catch (error) {
+        console.error('User fetch error:', error);
         setMessage({ type: 'error', text: 'Kullanıcı bilgileri yüklenirken bir hata oluştu.' });
       } finally {
         setLoading(false);
@@ -261,6 +217,15 @@ const UserDetailPage = () => {
               </div>
               
               <Input
+                label="Kullanıcı Adı"
+                name="username"
+                value={formData.username || ''}
+                onChange={handleInputChange}
+                disabled={true}
+                className="bg-gray-100"
+              />
+              
+              <Input
                 label="E-posta"
                 name="email"
                 type="email"
@@ -327,8 +292,8 @@ const UserDetailPage = () => {
                     disabled={!isEditing}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100"
                   >
-                    <option value="employee">Çalışan</option>
-                    <option value="manager">Müdür</option>
+                    <option value="fabrika_iscisi">Fabrika İşçisi</option>
+                    <option value="magaza_personeli">Mağaza Personeli</option>
                     <option value="admin">Yönetici</option>
                   </select>
                 </div>

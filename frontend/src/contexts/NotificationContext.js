@@ -231,6 +231,18 @@ export const NotificationProvider = ({ children }) => {
     }
   }, []);
 
+  // Clear all notifications
+  const clearAllNotifications = useCallback(async () => {
+    try {
+      await api.delete('/notifications/clear-all');
+      dispatch({ type: NOTIFICATION_ACTIONS.RESET_NOTIFICATIONS });
+      toast.success('Tüm bildirimler temizlendi');
+    } catch (error) {
+      console.error('Clear all notifications error:', error);
+      toast.error('Bildirimler temizlenemedi');
+    }
+  }, []);
+
   // Delete notification
   const deleteNotification = useCallback(async (notificationId) => {
     try {
@@ -460,6 +472,7 @@ export const NotificationProvider = ({ children }) => {
     loadMore,
     markAsRead,
     markAllAsRead,
+    clearAllNotifications,
     deleteNotification,
     sendNotification,
     sendBulkNotification,

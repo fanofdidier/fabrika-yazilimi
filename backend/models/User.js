@@ -79,7 +79,39 @@ const userSchema = new mongoose.Schema({
       type: Boolean,
       default: true
     }
-  }
+  },
+  // Password reset fields
+  passwordResetToken: {
+    type: String,
+    select: false
+  },
+  passwordResetExpires: {
+    type: Date,
+    select: false
+  },
+  // Two-Factor Authentication fields
+  twoFactorEnabled: {
+    type: Boolean,
+    default: false
+  },
+  twoFactorSecret: {
+    type: String,
+    select: false
+  },
+  twoFactorBackupCodes: [{
+    code: {
+      type: String,
+      required: true
+    },
+    used: {
+      type: Boolean,
+      default: false
+    },
+    usedAt: {
+      type: Date,
+      default: null
+    }
+  }]
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

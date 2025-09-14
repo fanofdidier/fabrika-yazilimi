@@ -1,88 +1,45 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Button, Input, Table, Badge, Alert, LoadingSpinner } from '../../components/UI';
+import { useAuth } from '../../contexts/AuthContext';
+import api from '../../services/api';
 
 
 const UsersPage = () => {
+  const { hasRole } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // Mock users data
-  const mockUsers = [
-    {
-      id: 1,
-      firstName: 'Ahmet',
-      lastName: 'Yılmaz',
-      email: 'ahmet.yilmaz@fabrika.com',
-      role: 'admin',
-      department: 'Yönetim',
-      position: 'Fabrika Müdürü',
-      status: 'active',
-      lastLogin: '2024-01-15T10:30:00Z',
-      createdAt: '2023-06-01T09:00:00Z'
-    },
-    {
-      id: 2,
-      firstName: 'Fatma',
-      lastName: 'Demir',
-      email: 'fatma.demir@fabrika.com',
-      role: 'manager',
-      department: 'Üretim',
-      position: 'Üretim Müdürü',
-      status: 'active',
-      lastLogin: '2024-01-15T08:45:00Z',
-      createdAt: '2023-07-15T10:00:00Z'
-    },
-    {
-      id: 3,
-      firstName: 'Mehmet',
-      lastName: 'Kaya',
-      email: 'mehmet.kaya@fabrika.com',
-      role: 'employee',
-      department: 'Üretim',
-      position: 'Operatör',
-      status: 'active',
-      lastLogin: '2024-01-14T16:20:00Z',
-      createdAt: '2023-08-01T11:00:00Z'
-    },
-    {
-      id: 4,
-      firstName: 'Ayşe',
-      lastName: 'Özkan',
-      email: 'ayse.ozkan@fabrika.com',
-      role: 'employee',
-      department: 'Kalite Kontrol',
-      position: 'Kalite Uzmanı',
-      status: 'inactive',
-      lastLogin: '2024-01-10T14:15:00Z',
-      createdAt: '2023-09-10T12:00:00Z'
-    },
-    {
-      id: 5,
-      firstName: 'Ali',
-      lastName: 'Çelik',
-      email: 'ali.celik@fabrika.com',
-      role: 'employee',
-      department: 'Lojistik',
-      position: 'Depo Sorumlusu',
-      status: 'active',
-      lastLogin: '2024-01-15T07:30:00Z',
-      createdAt: '2023-10-05T13:00:00Z'
-    }
-  ];
-
   useEffect(() => {
-    // Simulate API call
     const fetchUsers = async () => {
       setLoading(true);
       try {
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setUsers(mockUsers);
+        const response = await api.get('/users');
+        const backendUsers = response.data?.success && response.data?.data?.users ? response.data.data.users : [];
+        
+        // Backend verilerini normalize et
+        const normalizedUsers = backendUsers.map((user) => ({
+          id: user._id,
+          username: user.username || '',
+          firstName: user.firstName || '',
+          lastName: user.lastName || '',
+          fullName: user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+          email: user.email || '',
+          role: user.role || 'fabrika_iscisi',
+          department: user.department || 'Genel',
+          position: user.position || 'Çalışan',
+          phone: user.phone || '',
+          status: user.isActive !== false ? 'active' : 'inactive',
+          lastLogin: user.lastLogin || null,
+          createdAt: user.createdAt || new Date().toISOString()
+        }));
+        
+        setUsers(normalizedUsers);
       } catch (error) {
+        console.error('Users fetch error:', error);
         setMessage({ type: 'error', text: 'Kullanıcılar yüklenirken bir hata oluştu.' });
       } finally {
         setLoading(false);
@@ -110,8 +67,8 @@ const UsersPage = () => {
   const getRoleBadge = (role) => {
     const roleConfig = {
       admin: { variant: 'danger', label: 'Yönetici' },
-      manager: { variant: 'warning', label: 'Müdür' },
-      employee: { variant: 'primary', label: 'Çalışan' }
+      magaza_personeli: { variant: 'warning', label: 'Mağaza Personeli' },
+      fabrika_iscisi: { variant: 'primary', label: 'Fabrika İşçisi' }
     };
     
     const config = roleConfig[role] || { variant: 'secondary', label: role };
@@ -141,18 +98,15 @@ const UsersPage = () => {
 
   const handleUserAction = async (userId, action) => {
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      if (action === 'toggle_status') {
-        setUsers(prev => prev.map(user => 
-          user.id === userId 
-            ? { ...user, status: user.status === 'active' ? 'inactive' : 'active' }
-            : user
-        ));
-        setMessage({ type: 'success', text: 'Kullanıcı durumu güncellendi.' });
+      if (action === 'delete') {
+        if (window.confirm('Bu kullanıcıyı silmek istediğinizden emin misiniz?')) {
+          await api.delete(`/users/${userId}`);
+          setUsers(prev => prev.filter(user => user.id !== userId));
+          setMessage({ type: 'success', text: 'Kullanıcı başarıyla silindi.' });
+        }
       }
     } catch (error) {
+      console.error('User action error:', error);
       setMessage({ type: 'error', text: 'İşlem gerçekleştirilirken bir hata oluştu.' });
     }
   };
@@ -160,40 +114,52 @@ const UsersPage = () => {
   const tableColumns = [
     {
       key: 'name',
-      label: 'Ad Soyad',
-      render: (user) => (
+      label: 'Kullanıcı Bilgileri',
+      render: (value, user) => (
         <div>
           <div className="font-medium text-gray-900">
-            {user?.firstName || ''} {user?.lastName || ''}
+            {user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || '-'}
           </div>
-          <div className="text-sm text-gray-500">{user?.email || '-'}</div>
+          <div className="text-sm text-gray-500">
+            <div>👤 {user?.username || '-'}</div>
+            <div>📧 {user?.email || '-'}</div>
+          </div>
         </div>
       )
     },
     {
       key: 'role',
       label: 'Rol',
-      render: (user) => getRoleBadge(user.role)
+      render: (value, user) => getRoleBadge(user.role)
     },
     {
       key: 'department',
-      label: 'Departman',
-      render: (user) => (
+      label: 'İş Bilgileri',
+      render: (value, user) => (
         <div>
-          <div className="text-sm font-medium text-gray-900">{user?.department || '-'}</div>
-          <div className="text-sm text-gray-500">{user?.position || '-'}</div>
+          <div className="text-sm font-medium text-gray-900">
+            🏢 {user?.department || 'Genel'}
+          </div>
+          <div className="text-sm text-gray-500">
+            💼 {user?.position || 'Çalışan'}
+          </div>
+          {user?.phone && (
+            <div className="text-sm text-gray-500">
+              📞 {user.phone}
+            </div>
+          )}
         </div>
       )
     },
     {
       key: 'status',
       label: 'Durum',
-      render: (user) => getStatusBadge(user.status)
+      render: (value, user) => getStatusBadge(user.status)
     },
     {
       key: 'lastLogin',
       label: 'Son Giriş',
-      render: (user) => (
+      render: (value, user) => (
         <div className="text-sm text-gray-900">
           {user?.lastLogin ? formatDate(user.lastLogin) : 'Hiç giriş yapmamış'}
         </div>
@@ -202,7 +168,7 @@ const UsersPage = () => {
     {
       key: 'actions',
       label: 'İşlemler',
-      render: (user) => (
+      render: (value, user) => (
         <div className="flex gap-2">
           <Link to={`/users/${user?.id || ''}`}>
             <Button variant="outline" size="sm">
@@ -212,10 +178,10 @@ const UsersPage = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => handleUserAction(user?.id, 'toggle_status')}
-            className={user?.status === 'active' ? 'text-red-600 border-red-300 hover:bg-red-50' : 'text-green-600 border-green-300 hover:bg-green-50'}
+            onClick={() => handleUserAction(user?.id, 'delete')}
+            className="text-red-600 border-red-300 hover:bg-red-50"
           >
-            {user?.status === 'active' ? 'Pasifleştir' : 'Aktifleştir'}
+            Sil
           </Button>
         </div>
       )
@@ -241,9 +207,11 @@ const UsersPage = () => {
                 Toplam {users.length} kullanıcı • {filteredUsers.length} sonuç gösteriliyor
               </p>
             </div>
-            <Button>
-              Yeni Kullanıcı Ekle
-            </Button>
+            <Link to="/users/new">
+              <Button>
+                Yeni Kullanıcı Ekle
+              </Button>
+            </Link>
           </div>
 
           {/* Alert Messages */}
@@ -273,8 +241,8 @@ const UsersPage = () => {
               >
                 <option value="all">Tüm Roller</option>
                 <option value="admin">Yönetici</option>
-                <option value="manager">Müdür</option>
-                <option value="employee">Çalışan</option>
+                <option value="magaza_personeli">Mağaza Personeli</option>
+                <option value="fabrika_iscisi">Fabrika İşçisi</option>
               </select>
             </div>
           </div>

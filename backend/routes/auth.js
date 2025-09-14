@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { validateUserRegistration, validateUserLogin } = require('../middleware/validation');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { verify2FAForLogin } = require('../middleware/twoFactorAuth');
 
 const router = express.Router();
 
@@ -125,23 +126,98 @@ router.post('/login', validateUserLogin, async (req, res) => {
       });
     }
 
+    // 2FA kontrolü
+    if (user.twoFactorEnabled) {
+      // 2FA etkinse, token oluşturma ve kullanıcı bilgilerini döndürme
+      res.json({
+        success: true,
+        message: '2FA doğrulaması gerekli',
+        requires2FA: true,
+        userId: user._id,
+        user: {
+          id: user._id,
+          username: user.username,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role
+        }
+      });
+    } else {
+      // 2FA etkin değilse normal login
+      // Son giriş tarihini güncelle
+      user.lastLogin = new Date();
+      await user.save();
+
+      // Token oluştur
+      const token = generateToken(user._id);
+
+      res.json({
+        success: true,
+        message: 'Giriş başarılı',
+        data: {
+          user: user.toSafeObject(),
+          token
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Sunucu hatası',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// @route   POST /api/auth/verify-2fa
+// @desc    2FA doğrulama sonrası login
+// @access  Public
+router.post('/verify-2fa', async (req, res) => {
+  try {
+    const { userId, token } = req.body;
+
+    if (!userId || !token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Kullanıcı ID ve doğrulama kodu gereklidir'
+      });
+    }
+
+    // 2FA doğrulama
+    const verificationResult = await verify2FAForLogin(userId, token);
+    
+    if (!verificationResult.success) {
+      return res.status(400).json(verificationResult);
+    }
+
+    // Kullanıcıyı bul
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Kullanıcı bulunamadı'
+      });
+    }
+
     // Son giriş tarihini güncelle
     user.lastLogin = new Date();
     await user.save();
 
     // Token oluştur
-    const token = generateToken(user._id);
+    const jwtToken = generateToken(user._id);
 
     res.json({
       success: true,
-      message: 'Giriş başarılı',
+      message: '2FA doğrulaması başarılı',
       data: {
         user: user.toSafeObject(),
-        token
+        token: jwtToken
       }
     });
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('2FA verification error:', error);
     res.status(500).json({
       success: false,
       message: 'Sunucu hatası',

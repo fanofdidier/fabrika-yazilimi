@@ -13,7 +13,7 @@ import PublicRoute from './components/Auth/PublicRoute';
 
 // Lazy load pages for better performance
 const LoginPage = lazy(() => import('./pages/Auth/LoginPage'));
-const DashboardPage = lazy(() => import('./pages/Dashboard/DashboardPage'));
+const DashboardPage = lazy(() => import('./pages/Dashboard.js'));
 const OrdersPage = lazy(() => import('./pages/Orders/OrdersPage'));
 const OrderDetailPage = lazy(() => import('./pages/Orders/OrderDetailPage'));
 const CreateOrderPage = lazy(() => import('./pages/Orders/CreateOrderPage'));
@@ -22,6 +22,7 @@ const TaskDetailPage = lazy(() => import('./pages/Tasks/TaskDetailPage'));
 const CreateTaskPage = lazy(() => import('./pages/Tasks/CreateTaskPage'));
 const UsersPage = lazy(() => import('./pages/Users/UsersPage'));
 const UserDetailPage = lazy(() => import('./pages/Users/UserDetailPage'));
+const CreateUserPage = lazy(() => import('./pages/Users/CreateUserPage'));
 const NotificationsPage = lazy(() => import('./pages/Notifications/NotificationsPage'));
 const ProfilePage = lazy(() => import('./pages/Profile/ProfilePage'));
 const SettingsPage = lazy(() => import('./pages/Settings/SettingsPage'));
@@ -107,6 +108,14 @@ function App() {
               element={
                 <ProtectedRoute requiredRoles={['admin', 'magaza_personeli']}>
                   <UsersPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="users/new"
+              element={
+                <ProtectedRoute requiredRoles={['admin', 'magaza_personeli']}>
+                  <CreateUserPage />
                 </ProtectedRoute>
               }
             />

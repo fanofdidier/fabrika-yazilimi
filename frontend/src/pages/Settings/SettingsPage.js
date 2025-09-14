@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { Card, Button, Form, Alert, Badge } from '../../components/UI';
 import { useAuth } from '../../contexts/AuthContext';
+import TwoFactorManagement from '../../components/Auth/TwoFactorManagement';
+import TwoFactorSetup from '../../components/Auth/TwoFactorSetup';
 
 const SettingsPage = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [show2FASetup, setShow2FASetup] = useState(false);
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -51,6 +54,7 @@ const SettingsPage = () => {
     { id: 'profile', label: 'Profil Bilgileri', icon: '👤' },
     { id: 'notifications', label: 'Bildirimler', icon: '🔔' },
     { id: 'security', label: 'Güvenlik', icon: '🔒' },
+    { id: 'twofactor', label: '2FA Yönetimi', icon: '🔐' },
     { id: 'preferences', label: 'Tercihler', icon: '⚙️' }
   ];
 
@@ -199,6 +203,19 @@ const SettingsPage = () => {
           </div>
         );
 
+      case 'twofactor':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">İki Faktörlü Kimlik Doğrulama</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                Hesabınızı daha güvenli hale getirmek için 2FA'yı etkinleştirin.
+              </p>
+              <TwoFactorManagement onStartSetup={() => setShow2FASetup(true)} />
+            </div>
+          </div>
+        );
+
       case 'preferences':
         return (
           <div className="space-y-6">
@@ -246,6 +263,22 @@ const SettingsPage = () => {
         <h1 className="text-2xl font-bold text-gray-900">Ayarlar</h1>
         <p className="text-gray-600">Hesap ayarlarınızı ve tercihlerinizi yönetin</p>
       </div>
+
+      {/* 2FA Setup Modal */}
+      {show2FASetup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <TwoFactorSetup 
+              onComplete={() => {
+                setShow2FASetup(false);
+                setShowSuccess(true);
+                setTimeout(() => setShowSuccess(false), 3000);
+              }}
+              onCancel={() => setShow2FASetup(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Success Alert */}
       {showSuccess && (

@@ -2,11 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Button, Badge, Table, LoadingSpinner, Input } from '../../components/UI';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSocket } from '../../contexts/SocketContext';
 import api from '../../services/api';
+import { 
+  mapOrderStatus, 
+  mapPriority, 
+  getOrderStatusLabel, 
+  getPriorityLabel,
+  getOrderStatusColor,
+  getPriorityColor,
+  ORDER_STATUS_OPTIONS,
+  PRIORITY_OPTIONS
+} from '../../utils/statusMapping';
 
 
 const OrdersPage = () => {
   const { hasRole, user } = useAuth();
+  const { socket } = useSocket();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -18,122 +30,124 @@ const OrdersPage = () => {
   const isWorker = user?.role === 'fabrika_iscisi';
   
 
-  useEffect(() => {
-    const loadOrders = async () => {
-      // Eğer user yoksa veya loading durumundaysa bekle
-      if (!user) {
-        return;
-      }
+  const loadOrders = async () => {
+    // Eğer user yoksa veya loading durumundaysa bekle
+    if (!user) {
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      // Backend'den siparişleri getir
+      const res = await api.get('/orders');
       
-      setLoading(true);
-      try {
-        // 1) Backend'den admin siparişlerini getir
-        let backendOrders = [];
-        try {
-          const res = await api.get('/orders');
-          // Backend response: { success: true, data: { orders: [...], pagination: {...} } }
-          backendOrders = res.data?.success && res.data?.data?.orders ? res.data.data.orders : [];
-        } catch (apiErr) {
-          console.warn('Backend orders fetch failed, continue with local orders only.', apiErr?.message);
-          backendOrders = [];
+      // Backend response: { success: true, data: { orders: [...], pagination: {...} } }
+      const backendOrders = res.data?.success && res.data?.data?.orders ? res.data.data.orders : [];
+      
+      // Backend verilerini normalize et
+      const normalizedOrders = backendOrders.map((order) => {
+        const createdAt = order.createdAt || new Date().toISOString();
+        const orderNumber = order.orderNumber || `ORD-${new Date(createdAt).getFullYear()}-${String(order._id).slice(-4)}`;
+        
+        // Müşteri adını oluştur
+        let customerName = 'Bilinmeyen Müşteri';
+        if (order.createdBy) {
+          if (order.createdBy.firstName && order.createdBy.lastName) {
+            customerName = `${order.createdBy.firstName} ${order.createdBy.lastName}`.trim();
+          } else if (order.createdBy.username) {
+            customerName = order.createdBy.username;
+          }
         }
-        const apiNormalized = backendOrders.map((o, idx) => {
-          const createdAt = o.createdAt || new Date().toISOString();
-          const orderNumber = o.orderNumber || `WEB-${new Date(createdAt).getFullYear()}-${String(idx + 1).padStart(3, '0')}`;
-          
-          // Backend'den gelen veri yapısına göre mapping
-          const productName = o.items && o.items.length > 0 ? o.items[0].productName : (o.title || 'Ürün');
-          const customerName = o.createdBy && o.createdBy.firstName ? 
-            `${o.createdBy.firstName} ${o.createdBy.lastName || ''}`.trim() : 
-            (o.createdBy && o.createdBy.username ? o.createdBy.username : 'Müşteri');
-          const quantity = o.items && o.items.length > 0 ? o.items[0].quantity : 0;
-          const unitPrice = 0; // Backend'de unitPrice yok
-          const totalAmount = 0; // Backend'de totalPrice yok
-          const deliveryDate = o.dueDate || o.deliveryDate || null;
-          const orderDate = o.orderDate || createdAt;
-          const status = o.status || 'beklemede';
-          const priority = o.priority || 'normal';
-          
-          
-          return {
-            id: o._id, // Backend'deki gerçek _id'yi id olarak kullan
-            _id: o._id,
-            orderNumber,
-            product: productName,
-            productName,
-            customerName,
-            quantity,
-            unitPrice,
-            totalAmount,
-            deliveryDate,
-            orderDate,
-            status,
-            priority,
-            createdAt,
-            source: 'backend',
-            // Backend'den gelen diğer alanlar
-            title: o.title,
-            description: o.description,
-            location: o.location,
-            assignedTo: o.assignedTo,
-            items: o.items,
-            createdBy: o.createdBy,
-            updatedAt: o.updatedAt
-          };
-        });
+        
+        // Ürün bilgilerini al
+        let productName = 'Ürün';
+        let quantity = 0;
+        if (order.items && order.items.length > 0) {
+          productName = order.items[0].productName || order.items[0].name || 'Ürün';
+          quantity = order.items[0].quantity || 0;
+        } else if (order.title) {
+          productName = order.title;
+        }
+        
+        return {
+          id: order._id,
+          _id: order._id,
+          orderNumber,
+          product: productName,
+          productName,
+          customerName,
+          customerEmail: order.createdBy?.email || '',
+          quantity,
+          unitPrice: 0, // Backend'de unitPrice yok
+          totalAmount: 0, // Backend'de totalPrice yok
+          deliveryDate: order.dueDate || order.deliveryDate || null,
+          orderDate: order.orderDate || createdAt,
+          status: order.status || 'beklemede',
+          priority: order.priority || 'normal',
+          createdAt,
+          // Backend'den gelen diğer alanlar
+          title: order.title,
+          description: order.description,
+          location: order.location,
+          assignedTo: order.assignedTo,
+          items: order.items,
+          createdBy: order.createdBy,
+          updatedAt: order.updatedAt
+        };
+      });
 
-        // 2) Sadece backend'den gelen verileri kullan
-        setOrders(apiNormalized);
+      setOrders(normalizedOrders);
+    } catch (error) {
+      console.error('Orders loading error:', error);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        await new Promise(resolve => setTimeout(resolve, 300));
-      } catch (error) {
-        console.error('Orders loading error:', error);
-        setOrders([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
+  useEffect(() => {
     loadOrders();
-  }, [user]); // user dependency'sini geri ekledim
+  }, [user]);
+
+  // Socket.io ile gerçek zamanlı güncellemeler
+  useEffect(() => {
+    if (socket) {
+      const handleOrderUpdated = (data) => {
+        console.log('🔔 OrdersPage: Order updated event received:', data);
+        // Siparişleri yenile
+        loadOrders();
+      };
+
+      const handleNewOrder = (data) => {
+        console.log('🔔 OrdersPage: New order event received:', data);
+        // Siparişleri yenile
+        loadOrders();
+      };
+
+      socket.on('orderUpdated', handleOrderUpdated);
+      socket.on('new-order', handleNewOrder);
+
+      return () => {
+        socket.off('orderUpdated', handleOrderUpdated);
+        socket.off('new-order', handleNewOrder);
+      };
+    }
+  }, [socket]);
 
   const getStatusBadge = (status) => {
-    const statusConfig = {
-      beklemede: { variant: 'warning', text: 'Beklemede' },
-      onaylandi: { variant: 'primary', text: 'Onaylandı' },
-      hazirlaniyor: { variant: 'primary', text: 'Hazırlanıyor' },
-      ham_madde_bekleniyor: { variant: 'warning', text: 'Ham Madde Bekleniyor' },
-      uretimde: { variant: 'primary', text: 'Üretimde' },
-      kalite_kontrol: { variant: 'info', text: 'Kalite Kontrol' },
-      paketleniyor: { variant: 'primary', text: 'Paketleniyor' },
-      kargoya_verildi: { variant: 'info', text: 'Kargoya Verildi' },
-      teslim_edildi: { variant: 'success', text: 'Teslim Edildi' },
-      iptal_edildi: { variant: 'danger', text: 'İptal Edildi' },
-      // Eski değerler için backward compatibility
-      pending: { variant: 'warning', text: 'Beklemede' },
-      in_progress: { variant: 'primary', text: 'İşlemde' },
-      completed: { variant: 'success', text: 'Tamamlandı' },
-      cancelled: { variant: 'danger', text: 'İptal Edildi' }
-    };
-    
-    const config = statusConfig[status] || { variant: 'secondary', text: status };
-    return <Badge variant={config.variant}>{config.text}</Badge>;
+    return (
+      <Badge variant={getOrderStatusColor(status)}>
+        {getOrderStatusLabel(status)}
+      </Badge>
+    );
   };
 
   const getPriorityBadge = (priority) => {
-    const priorityConfig = {
-      düşük: { variant: 'success', text: 'Düşük' },
-      normal: { variant: 'warning', text: 'Normal' },
-      yüksek: { variant: 'danger', text: 'Yüksek' },
-      acil: { variant: 'danger', text: 'Acil' },
-      // Eski değerler için backward compatibility
-      low: { variant: 'success', text: 'Düşük' },
-      medium: { variant: 'warning', text: 'Orta' },
-      high: { variant: 'danger', text: 'Yüksek' }
-    };
-    
-    const config = priorityConfig[priority] || { variant: 'secondary', text: priority };
-    return <Badge variant={config.variant} size="sm">{config.text}</Badge>;
+    return (
+      <Badge variant={getPriorityColor(priority)} size="sm">
+        {getPriorityLabel(priority)}
+      </Badge>
+    );
   };
 
   const formatDate = (dateString) => {
@@ -149,14 +163,28 @@ const OrdersPage = () => {
 
   const filteredOrders = orders.filter(order => {
     if (!order) return false;
+    
+    // Arama filtresi
     const matchesSearch = 
       order.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (order.product || order.productName)?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    // Status filtresi - backend status'larını frontend status'larına map et
+    let matchesStatus = true;
+    if (statusFilter !== 'all') {
+      const mappedOrderStatus = mapOrderStatus(order.status);
+      matchesStatus = mappedOrderStatus === statusFilter;
+    }
     
-    return matchesSearch && matchesStatus;
+    // Öncelik filtresi
+    let matchesPriority = true;
+    if (priorityFilter !== 'all') {
+      const mappedOrderPriority = mapPriority(order.priority);
+      matchesPriority = mappedOrderPriority === priorityFilter;
+    }
+    
+    return matchesSearch && matchesStatus && matchesPriority;
   });
   
 
@@ -245,39 +273,50 @@ const OrdersPage = () => {
     }
   ];
 
-  const statusOptions = [
-    { value: 'all', label: 'Tüm Durumlar' },
-    { value: 'pending', label: 'Beklemede' },
-    { value: 'in_progress', label: 'İşlemde' },
-    { value: 'completed', label: 'Tamamlandı' },
-    { value: 'cancelled', label: 'İptal Edildi' }
-  ];
+  // Status ve priority options utility'den import edildi
 
   const getStatusCounts = () => {
-    return orders.reduce((acc, order) => {
+    const counts = { 
+      total: 0,
+      open: 0,      // siparis_olusturuldu, siparis_onaylandi, hammadde_hazirlaniyor, uretim_basladi, uretim_tamamlandi, kalite_kontrol, sevkiyata_hazir, yola_cikti
+      closed: 0     // teslim_edildi, tamamlandi, iptal_edildi
+    };
+
+    orders.forEach(order => {
       if (order?.status) {
-        // Backend status'larını frontend status'larına map et
-        let mappedStatus = order.status;
+        counts.total += 1;
         
-        // Backend status'larını frontend status'larına çevir
-        const statusMapping = {
-          'beklemede': 'pending',
-          'onaylandi': 'pending',
-          'hazirlaniyor': 'in_progress',
-          'ham_madde_bekleniyor': 'in_progress',
-          'uretimde': 'in_progress',
-          'kalite_kontrol': 'in_progress',
-          'paketleniyor': 'in_progress',
-          'kargoya_verildi': 'in_progress',
-          'teslim_edildi': 'completed',
-          'iptal_edildi': 'cancelled'
-        };
-        
-        mappedStatus = statusMapping[order.status] || order.status;
-        acc[mappedStatus] = (acc[mappedStatus] || 0) + 1;
+        switch (order.status) {
+          case 'siparis_olusturuldu':
+          case 'siparis_onaylandi':
+          case 'hammadde_hazirlaniyor':
+          case 'uretim_basladi':
+          case 'uretim_tamamlandi':
+          case 'kalite_kontrol':
+          case 'sevkiyata_hazir':
+          case 'yola_cikti':
+            counts.open += 1;
+            break;
+          case 'teslim_edildi':
+          case 'tamamlandi':
+          case 'iptal_edildi':
+            counts.closed += 1;
+            break;
+          // Eski status'lar için backward compatibility
+          case 'beklemede':
+          case 'onaylandi':
+          case 'hazirlaniyor':
+          case 'ham_madde_bekleniyor':
+          case 'uretimde':
+          case 'paketleniyor':
+          case 'kargoya_verildi':
+            counts.open += 1;
+            break;
+        }
       }
-      return acc;
-    }, {});
+    });
+
+    return counts;
   };
 
   const statusCounts = getStatusCounts();
@@ -315,15 +354,15 @@ const OrdersPage = () => {
         </div>
 
         {/* Status Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           <Card className="p-4">
             <div className="flex items-center">
-              <div className="p-2 bg-yellow-100 rounded-lg mr-3">
-                <span className="text-yellow-600 text-xl">⏳</span>
+              <div className="p-2 bg-gray-100 rounded-lg mr-3">
+                <span className="text-gray-600 text-xl">📊</span>
               </div>
               <div>
-                <p className="text-sm text-gray-600">{isWorker ? 'Devam Eden Görevler' : 'Beklemede'}</p>
-                <p className="text-2xl font-bold text-gray-900">{statusCounts.pending || 0}</p>
+                <p className="text-sm text-gray-600">Toplam Sipariş</p>
+                <p className="text-2xl font-bold text-gray-900">{statusCounts.total || 0}</p>
               </div>
             </div>
           </Card>
@@ -333,30 +372,19 @@ const OrdersPage = () => {
                 <span className="text-blue-600 text-xl">🔄</span>
               </div>
               <div>
-                <p className="text-sm text-gray-600">{isWorker ? 'Devam Eden Görevler' : 'İşlemde'}</p>
-                <p className="text-2xl font-bold text-gray-900">{statusCounts.in_progress || 0}</p>
+                <p className="text-sm text-gray-600">Açık Siparişler</p>
+                <p className="text-2xl font-bold text-gray-900">{statusCounts.open || 0}</p>
               </div>
             </div>
           </Card>
           <Card className="p-4">
             <div className="flex items-center">
-              <div className="p-2 bg-green-100 rounded-lg mr-3">
-                <span className="text-green-600 text-xl">✅</span>
+              <div className="p-2 bg-gray-100 rounded-lg mr-3">
+                <span className="text-gray-600 text-xl">🔒</span>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Tamamlandı</p>
-                <p className="text-2xl font-bold text-gray-900">{statusCounts.completed || 0}</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center">
-              <div className="p-2 bg-red-100 rounded-lg mr-3">
-                <span className="text-red-600 text-xl">❌</span>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">İptal Edildi</p>
-                <p className="text-2xl font-bold text-gray-900">{statusCounts.cancelled || 0}</p>
+                <p className="text-sm text-gray-600">Kapalı Siparişler</p>
+                <p className="text-2xl font-bold text-gray-900">{statusCounts.closed || 0}</p>
               </div>
             </div>
           </Card>
@@ -375,7 +403,7 @@ const OrdersPage = () => {
               onChange={(e) => setStatusFilter(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {statusOptions.map(option => (
+              {ORDER_STATUS_OPTIONS.map(option => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
@@ -384,17 +412,27 @@ const OrdersPage = () => {
               onChange={(e) => setPriorityFilter(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="all">Tüm Öncelikler</option>
-              <option value="high">Yüksek</option>
-              <option value="medium">Orta</option>
-              <option value="low">Düşük</option>
+              {PRIORITY_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
           </div>
         </Card>
 
         {/* Orders Table */}
         <Card>
-          <Table columns={columns} data={filteredOrders} />
+          <Table 
+            columns={columns} 
+            data={filteredOrders} 
+            getRowClassName={(order) => {
+              // Kapalı siparişler için farklı stil
+              const closedStatuses = ['teslim_edildi', 'tamamlandi', 'iptal_edildi'];
+              if (closedStatuses.includes(order.status)) {
+                return 'bg-gray-100 opacity-75';
+              }
+              return '';
+            }}
+          />
         </Card>
     </div>
   );

@@ -172,10 +172,33 @@ router.post('/', authenticateToken, requireAdmin, validateNotificationCreation, 
     
     // Socket.io ile gerçek zamanlı bildirim
     const io = req.app.get('io');
-    io.emit('new-notification', {
-      notification: populatedNotification,
-      message: 'Yeni bildirim'
-    });
+    if (io) {
+      // Global bildirim için tüm kullanıcılara gönder
+      if (isGlobal && targetRoles) {
+        targetRoles.forEach(role => {
+          io.to(`role_${role}`).emit('newNotification', {
+            type: populatedNotification.type,
+            title: populatedNotification.title,
+            message: populatedNotification.message,
+            orderId: populatedNotification.relatedOrder?._id,
+            timestamp: populatedNotification.createdAt
+          });
+        });
+      }
+      
+      // Belirli kullanıcılara bildirim
+      if (recipients && recipients.length > 0) {
+        recipients.forEach(recipient => {
+          io.to(`user_${recipient}`).emit('newNotification', {
+            type: populatedNotification.type,
+            title: populatedNotification.title,
+            message: populatedNotification.message,
+            orderId: populatedNotification.relatedOrder?._id,
+            timestamp: populatedNotification.createdAt
+          });
+        });
+      }
+    }
     
     res.status(201).json({
       success: true,
@@ -186,6 +209,96 @@ router.post('/', authenticateToken, requireAdmin, validateNotificationCreation, 
     });
   } catch (error) {
     console.error('Create notification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Sunucu hatası',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// @route   PUT /api/notifications/mark-all-read
+// @desc    Tüm bildirimleri okundu olarak işaretle
+// @access  Private
+router.put('/mark-all-read', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    // Kullanıcının tüm bildirimlerini okundu olarak işaretle
+    await Notification.updateMany(
+      {
+        $or: [
+          { recipients: { $elemMatch: { user: userId } } },
+          { 
+            isGlobal: true,
+            targetRoles: { $in: [req.user.role] },
+            createdAt: { $gte: req.user.createdAt }
+          }
+        ]
+      },
+      {
+        $set: {
+          'recipients.$[elem].isRead': true,
+          'recipients.$[elem].readAt': new Date()
+        }
+      },
+      {
+        arrayFilters: [{ 'elem.user': userId }]
+      }
+    );
+    
+    res.json({
+      success: true,
+      message: 'Tüm bildirimler okundu olarak işaretlendi'
+    });
+  } catch (error) {
+    console.error('Mark all as read error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Sunucu hatası',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// @route   DELETE /api/notifications/clear-all
+// @desc    Tüm bildirimleri temizle
+// @access  Private
+router.delete('/clear-all', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    // Kullanıcının tüm bildirimlerini sil
+    await Notification.updateMany(
+      {
+        $or: [
+          { recipients: { $elemMatch: { user: userId } } },
+          { 
+            isGlobal: true,
+            targetRoles: { $in: [req.user.role] },
+            createdAt: { $gte: req.user.createdAt }
+          }
+        ]
+      },
+      {
+        $pull: {
+          recipients: { user: userId }
+        }
+      }
+    );
+    
+    // Eğer recipients array'i boş kaldıysa bildirimi tamamen sil
+    await Notification.deleteMany({
+      recipients: { $size: 0 },
+      isGlobal: false
+    });
+    
+    res.json({
+      success: true,
+      message: 'Tüm bildirimler temizlendi'
+    });
+  } catch (error) {
+    console.error('Clear all notifications error:', error);
     res.status(500).json({
       success: false,
       message: 'Sunucu hatası',
